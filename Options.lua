@@ -1,6 +1,6 @@
 local _, Peddler = ...
 
-local frame = CreateFrame("Frame", nil, InterfaceOptionsFramePanelContainer)
+local frame = CreateFrame("Frame", nil, InterfaceOptionsFramePanelContainer or UIParent)
 frame.name = "Peddler"
 frame:Hide()
 
@@ -13,7 +13,7 @@ local function createCheckBox(parent, anchor, number, property, label, tooltip)
 	local checkbox = CreateFrame("CheckButton", "PeddlerCheckBox" .. number, parent, "ChatConfigCheckButtonTemplate")
 	checkbox:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 16, number * -26)
 
-	local checkboxLabel = _G[checkbox:GetName() .. "Text"]
+	local checkboxLabel = checkbox.Text or _G[checkbox:GetName() .. "Text"]
 	checkboxLabel:SetText(label)
 	checkboxLabel:SetPoint("TOPLEFT", checkbox, "RIGHT", 5, 7)
 

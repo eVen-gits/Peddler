@@ -2,9 +2,9 @@ local _, Peddler = ...
 
 -- Assign global functions to locals for optimisation.
 local C_Container = C_Container
-local GetItemInfo = GetItemInfo
+-- Modern clients expose GetItemInfo under C_Item.
+local GetItemInfo = (C_Item and C_Item.GetItemInfo) or GetItemInfo
 local GetQuestLogItemLink = GetQuestLogItemLink
-local PickupMerchantItem = PickupMerchantItem
 local IsControlKeyDown = IsControlKeyDown
 local IsShiftKeyDown = IsShiftKeyDown
 local IsAltKeyDown = IsAltKeyDown
@@ -60,6 +60,13 @@ end
 
 -- Serves to get the item's itemID + suffixID.
 local function parseItemString(itemString)
+  if not itemString then
+    return
+  end
+
+  -- Modern links open with a colour code like "|cnIQ1:" that holds a colon of
+  -- its own, so cut the "item:..." part out before splitting.
+  itemString = itemString:match("item:[^|]*")
   if not itemString then
     return
   end
@@ -138,12 +145,6 @@ local function peddleGoods()
       local itemID, uniqueItemID, isSoulbound, itemLink = Peddler.getUniqueItemID(bagNumber, slotNumber)
 
       if uniqueItemID and Peddler.itemIsToBeSold(itemID, uniqueItemID, isSoulbound) then
-        local itemButton = _G["ContainerFrame" .. bagNumber + 1 .. "Item" .. bagsSlotCount - slotNumber + 1]
-
-        if itemButton.coins then
-          itemButton.coins:Hide()
-        end
-
         local itemInfo = C_Container.GetContainerItemInfo(bagNumber, slotNumber)
         local amount = itemInfo.stackCount
 
@@ -179,12 +180,10 @@ local function peddleGoods()
           waitAnimationGroup:Play()
 
           waitAnimationGroup:SetScript("OnFinished", function()
-            C_Container.PickupContainerItem(bagNumber, slotNumber)
-            PickupMerchantItem()
+            C_Container.UseContainerItem(bagNumber, slotNumber)
           end)
         else
-          C_Container.PickupContainerItem(bagNumber, slotNumber)
-          PickupMerchantItem()
+          C_Container.UseContainerItem(bagNumber, slotNumber)
         end
 
         sellCount = sellCount + 1
@@ -205,10 +204,24 @@ local function peddleGoods()
   end
 end
 
+-- Textures are kept off the buttons themselves: writing properties onto
+-- Blizzard's secure item buttons (which bag replacements reuse) taints them.
+local coinTextures = setmetatable({}, { __mode = "k" })
+
+local function hideCoins(itemButton)
+  local texture = coinTextures[itemButton]
+  if texture then
+    texture:Hide()
+  end
+end
+
 local function showCoinTexture(itemButton)
-  if not itemButton.coins then
-    local texture = itemButton:CreateTexture(nil, "OVERLAY")
+  local texture = coinTextures[itemButton]
+  if not texture then
+    texture = (itemButton._textOverlay or itemButton):CreateTexture(nil, "OVERLAY", nil, 7)
     texture:SetTexture("Interface\\AddOns\\Peddler\\coins")
+    -- Modern clients do not size a texture from its file; coins.tga is 16x16.
+    texture:SetSize(16, 16)
 
     -- Default padding for making bottom-right look great.
     local paddingX, paddingY = -3, 1
@@ -219,12 +232,12 @@ local function showCoinTexture(itemButton)
       paddingX = 1
     end
 
-    texture:SetPoint(IconPlacement, paddingX, paddingY)
+    texture:SetPoint(IconPlacement, itemButton, IconPlacement, paddingX, paddingY)
 
-    itemButton.coins = texture
+    coinTextures[itemButton] = texture
   end
 
-  itemButton.coins:Show()
+  texture:Show()
 
   if not usingDefaultBags then
     peddler:SetScript("OnUpdate", nil)
@@ -244,15 +257,26 @@ local function displayCoins(itemID, uniqueItemID, itemButton, isSoulbound)
   if uniqueItemID then
     if Peddler.itemIsToBeSold(itemID, uniqueItemID, isSoulbound) then
       showCoinTexture(itemButton)
-    elseif itemButton.coins then
-      itemButton.coins:Hide()
+    else
+      hideCoins(itemButton)
     end
-  elseif itemButton.coins then
-    itemButton.coins:Hide()
+  else
+    hideCoins(itemButton)
   end
 end
 
+local handleItemClick
+
+-- The modifier-click handler is hooked per button, as modern clients have no
+-- global ContainerFrameItemButton_OnModifiedClick and bag addons bring their own buttons.
+local clickHooked = setmetatable({}, { __mode = "k" })
+
 local function checkItem(bagNumber, slotNumber, itemButton)
+  if not clickHooked[itemButton] and itemButton.HookScript then
+    clickHooked[itemButton] = true
+    itemButton:HookScript("OnClick", handleItemClick)
+  end
+
   local itemID, uniqueItemID, isSoulbound = Peddler.getUniqueItemID(bagNumber, slotNumber)
   displayCoins(itemID, uniqueItemID, itemButton, isSoulbound)
 end
@@ -514,36 +538,92 @@ local function markRealUIBags()
   end
 end
 
+-- Bag and slot of a Blizzard-style item button.
+local function getButtonBagSlot(itemButton)
+  local bagNumber = itemButton.GetBagID and itemButton:GetBagID()
+  if not bagNumber then
+    local parent = itemButton:GetParent()
+    bagNumber = parent and parent:GetID()
+  end
+  return bagNumber, itemButton:GetID()
+end
+
+-- The item buttons of one Blizzard bag frame: modern clients enumerate them,
+-- Classic names them ContainerFrame<n>Item<m>.
+local function forEachBagButton(frame, func)
+  if frame.EnumerateValidItems then
+    for _, itemButton in frame:EnumerateValidItems() do
+      func(itemButton)
+    end
+    return
+  end
+
+  local frameName = frame:GetName()
+  for i = 1, 36 do
+    local itemButton = _G[frameName .. "Item" .. i]
+    if not itemButton then
+      break
+    end
+    func(itemButton)
+  end
+end
+
+local function checkBagButton(itemButton)
+  if itemButton:IsVisible() then
+    local bagNumber, slotNumber = getButtonBagSlot(itemButton)
+    checkItem(bagNumber, slotNumber, itemButton)
+  end
+end
+
 -- Also works for bBag.
 local function markNormalBags()
-  for containerNumber = 0, BAG_COUNT do
-    local container = _G["ContainerFrame" .. containerNumber + 1]
-    local combinedBags = _G["ContainerFrameCombinedBags"]
-    if (container:IsShown()) then
-      local bagsSlotCount = C_Container.GetContainerNumSlots(containerNumber)
-      for slotNumber = 1, bagsSlotCount do
-        -- It appears there are two ways of finding items!
-        --   Accessing via _G means that bagNumbers are 1-based indices and
-        --   slot numbers start from the bottom-right rather than top-left!
-        -- Additionally, as only a couple of the bags may be visible at any
-        --   given time, we may be looking at items whose buttons don't
-        --   currently exist, and mark the wrong ones, so get the actual
-        --   bag & slot number from the itemButton.
-        local itemButton = _G["ContainerFrame" .. containerNumber + 1 .. "Item" .. bagsSlotCount - slotNumber + 1]
+  local combinedBags = _G["ContainerFrameCombinedBags"]
+  if combinedBags and combinedBags:IsShown() then
+    forEachBagButton(combinedBags, checkBagButton)
+  end
 
-        local bagNumber = itemButton:GetParent():GetID()
-        local actualSlotNumber = itemButton:GetID()
+  for containerNumber = 1, NUM_CONTAINER_FRAMES or BAG_COUNT + 1 do
+    local container = _G["ContainerFrame" .. containerNumber]
+    if container and container:IsShown() then
+      forEachBagButton(container, checkBagButton)
+    end
+  end
+end
 
-        checkItem(bagNumber, actualSlotNumber, itemButton)
-      end
-    elseif (combinedBags and combinedBags:IsShown()) then
-      local bagsSlotCount = C_Container.GetContainerNumSlots(containerNumber)
-      for slotNumber = 1, bagsSlotCount do
-        local itemButton = _G["ContainerFrame" .. containerNumber + 1 .. "Item" .. bagsSlotCount - slotNumber + 1]
-        local actualSlotNumber = itemButton:GetID()
+-- EllesmereUI Bags draws the bags itself and paints third-party overlays through
+-- EUI_Bags.RegisterItemOverlayIcon. Remember each painted button so a mark
+-- toggle can repaint them without waiting for a bag refresh.
+local euiButtons = setmetatable({}, { __mode = "k" })
+local euiRegistered = false
 
-        checkItem(containerNumber, actualSlotNumber, itemButton)
-      end
+local function paintEUIButton(itemButton, data)
+  local bagNumber, slotNumber = data.bag, data.slot
+  if bagNumber and bagNumber >= 0 and bagNumber <= BAG_COUNT and data.info and data.info.itemID then
+    euiButtons[itemButton] = { bagNumber, slotNumber }
+    checkItem(bagNumber, slotNumber, itemButton)
+  else
+    euiButtons[itemButton] = nil
+    hideCoins(itemButton)
+  end
+end
+
+local function markEUIBags()
+  if not euiRegistered then
+    local euiBags = _G["EUI_Bags"]
+    if not (euiBags and euiBags.RegisterItemOverlayIcon) then
+      return
+    end
+    euiBags.RegisterItemOverlayIcon("Peddler", paintEUIButton)
+    euiRegistered = true
+    -- Bags drawn before we registered have not been painted for us yet.
+    if euiBags.IsVisible and euiBags:IsVisible() and euiBags.RefreshInventory then
+      euiBags:RefreshInventory()
+    end
+  end
+
+  for itemButton, location in pairs(euiButtons) do
+    if itemButton:IsVisible() then
+      checkItem(location[1], location[2], itemButton)
     end
   end
 end
@@ -552,6 +632,10 @@ local overridenItemClickFunction = false
 
 -- TODO: Split these into separate, well-coded things already.
 local function markWares()
+  -- EllesmereUI Bags can be switched back to Blizzard's bags in its options,
+  -- so the default-bags branch below still runs alongside it.
+  markEUIBags()
+
   if IsAddOnLoaded("Baggins") then
     markBagginsBags()
   elseif IsAddOnLoaded("Combuctor")  then
@@ -702,7 +786,7 @@ local function toggleItemPeddling(itemID, uniqueItemID, isSoulbound)
   end
 end
 
-local function handleItemClick(self, button)
+function handleItemClick(self, button)
 	local ctrlKeyDown = IsControlKeyDown()
 	local shiftKeyDown = IsShiftKeyDown()
 	local altKeyDown = IsAltKeyDown()
@@ -713,8 +797,7 @@ local function handleItemClick(self, button)
 		return
 	end
 
-	local bagNumber = self:GetParent():GetID()
-	local slotNumber = self:GetID()
+	local bagNumber, slotNumber = getButtonBagSlot(self)
 
 	local itemID, uniqueItemID, isSoulbound = Peddler.getUniqueItemID(bagNumber, slotNumber)
 
@@ -727,8 +810,6 @@ local function handleItemClick(self, button)
 
 	markWares()
 end
-
-hooksecurefunc("ContainerFrameItemButton_OnModifiedClick", handleItemClick)
 
 -- Quest Reward handling.
 --[[ 

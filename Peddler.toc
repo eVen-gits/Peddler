@@ -1,7 +1,8 @@
-## Interface: 11509
+## Interface: 11509, 16001
 ## Title: Peddler
 ## Notes: Automatically sells previously designated items!
 ## Author: Cartas @ Stitches-HC
+## OptionalDeps: EllesmereUIBags
 ## SavedVariables: ModifierKey, SellLimit, Silent, SilenceSaleSummary, IconPlacement
 ## SavedVariablesPerCharacter: ItemsToSell, UnmarkedItems, AutoSellGreyItems, AutoSellWhiteItems, AutoSellGreenItems, AutoSellBlueItems, AutoSellPurpleItems, AutoSellUnwantedItems, SoulboundOnly
 
