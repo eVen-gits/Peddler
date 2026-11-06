@@ -3,6 +3,10 @@
 ## Notes: Automatically sells previously designated items!
 ## Author: Cartas @ Stitches-HC
 ## OptionalDeps: EllesmereUIBags
+## IconTexture: Interface\Icons\INV_Misc_Coin_01
+## AddonCompartmentFunc: Peddler_OnAddonCompartmentClick
+## AddonCompartmentFuncOnEnter: Peddler_OnAddonCompartmentEnter
+## AddonCompartmentFuncOnLeave: Peddler_OnAddonCompartmentLeave
 ## SavedVariables: ModifierKey, SellLimit, Silent, SilenceSaleSummary, IconPlacement
 ## SavedVariablesPerCharacter: ItemsToSell, UnmarkedItems, AutoSellGreyItems, AutoSellWhiteItems, AutoSellGreenItems, AutoSellBlueItems, AutoSellPurpleItems, AutoSellUnwantedItems, SoulboundOnly
 

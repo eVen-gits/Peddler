@@ -35,3 +35,4 @@ This fork (originally by Cartas) runs on the WoW Forever client (`## Interface: 
 - Item buttons are located through `EnumerateValidItems`/`GetBagID` on the default bag frames, and the modifier-click is hooked on each button, as the modern client has no `ContainerFrameItemButton_OnModifiedClick`.
 - Items are sold with `C_Container.UseContainerItem`.
 - *EllesmereUI Bags* is supported through its overlay API (`EUI_Bags.RegisterItemOverlayIcon`): the coin overlay and the modifier-click marking work in its grid and list views. With EllesmereUI Bags disabled (or switched back to the default bags), the default bags are used. Saved variables are unchanged.
+- A Peddler entry in the minimap addon compartment opens the options (EllesmereUI hides that compartment by default: enable *Show Addon Compartment* in its Minimap options).

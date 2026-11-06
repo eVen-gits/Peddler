@@ -177,12 +177,30 @@ else
 	InterfaceOptions_AddCategory(frame)
 end
 
--- Handling Peddler's options.
-SLASH_PEDDLER_COMMAND1 = '/peddler'
-SlashCmdList['PEDDLER_COMMAND'] = function(command)
+local function openOptions()
 	if settingsCategory then
 		Settings.OpenToCategory(settingsCategory:GetID())
 	else
 		InterfaceOptionsFrame_OpenToCategory(frame)
 	end
+end
+
+-- Handling Peddler's options.
+SLASH_PEDDLER_COMMAND1 = '/peddler'
+SlashCmdList['PEDDLER_COMMAND'] = openOptions
+
+-- Minimap addon compartment entry (the toc's AddonCompartmentFunc*): globals, as the game looks them up by name.
+function Peddler_OnAddonCompartmentClick()
+	openOptions()
+end
+
+function Peddler_OnAddonCompartmentEnter(_, owner)
+	GameTooltip:SetOwner(owner, "ANCHOR_LEFT")
+	GameTooltip:SetText("Peddler")
+	GameTooltip:AddLine("Click to open the options.", 1, 1, 1)
+	GameTooltip:Show()
+end
+
+function Peddler_OnAddonCompartmentLeave()
+	GameTooltip:Hide()
 end
